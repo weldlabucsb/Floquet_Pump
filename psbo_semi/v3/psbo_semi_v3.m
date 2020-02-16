@@ -239,5 +239,8 @@ else
     plot([0 max(tvec)]*1e3,[1 1]*U0,'k-','linewidth',1);
 end
 xlabel('time (ms)','interpreter','latex');
-
 ylabel('$V_0 (E_R)$','interpreter','latex');
+
+saveas(gcf,'psbo_semi_sim.fig');
+saveas(gcf,'psbo_semi_sim.png');
+save('data.mat','tvec','x_avg','xspread_avg','latticedepth','U0','U1','phi0','TB0','fD','dfdt');
