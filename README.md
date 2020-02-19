@@ -9,4 +9,7 @@ simulations. Keep the bands.fig file in this folder as it is used to compute ban
 1. Single particle position evolution, good and fast for first moment analysis.
 2. Classical ensemble first and second moment evolution, there are some issues with the momentum calculation.
 3. Same as v2 with parallel computing and standardized scale for integration time step.
-4. Classical ensemble with first moment, second moment and probability distribution evolution. Fixed momentum moments calculation.
+4. Classical ensemble with first moment, second moment and probability distribution evolution. Fixed momentum moments calculation. Prodcues a data.mat file for comparison with experiment.
+
+**theory_exp_compare** In this folder, there is analysis script theory_exp_compare_vN.m to compare the experimental data to the semiclassical simulations of psbo_semi. To use, create a folder inside that contains the corresponding atomdata.mat from the experiment and data.mat from psbo_semi. Then run the script. Current version control is:
+1. Computes first and second moments of experiment by summing a weighted OD. Generates a plot overlaying the theory and experiment for the first and second moments.
