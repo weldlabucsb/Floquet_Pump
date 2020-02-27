@@ -24,7 +24,7 @@ fR=Er/h;            % recoil frequency in Hz
 q=15.5;              % HO frequency in Hz
 omega=2*pi*q;      % HO angular frequency Hz*rad
 
-TB0=18E-3;      % bloch oscillation period in s
+TB0=16.75E-3;      % bloch oscillation period in s
 fB0=1/TB0;         % bloch oscillation frequency in Hz
 fD = 53.56;        % set drive frequency
 Tf=200E-3;         % final time
@@ -32,6 +32,7 @@ U0=4.345;            % lattice depth in Er
 phi0=pi/2;       % phase of sine wave drive
 U1=1.02;            % modulation half amplitude in Er
 F0=h*fB0/d;        % Initial force in N
+xsigma = 49;      %initial cloud width
 
 % Simulation parameters
 frequencyRamp = 0;  %yes or no
@@ -101,7 +102,7 @@ L=(fR*BW(U0)/fB0);
 
 J = Er*BW(U0+U1*sin(phi0))/4;   %tunneling energy in Joules
 lws = 2*J/F0;                   %localization length in meters
-F = F0 - m*omega^2*lws;         %actual force at start of the drive
+F = F0 - m*omega^2*lws*2;         %actual force at start of the drive
 %% Time evolve with modulated lattice depth
 % Time evolves a classical ensemble of particles in a harmonic potential
 % with a custom dispersion.
@@ -144,7 +145,6 @@ end
 % space is integrated over and a probability weight is associated with each
 % initial condition. The solutions are interpolated for identical time vectors
 % so that the moments can be computed.
-xsigma = 60; %position width
 psigma = pi/(2*xsigma); %minimum uncertainty
 p0 = 1; %if starting modulation not at the center of the Brillouin zone
 xwidth = 3*xsigma; pwidth = 3*psigma; %integrate phase space to 3 sigma point
@@ -172,60 +172,46 @@ toc
 normalization = sum(sum(phasespaceprob,1)); %normalize probability
 phasespaceprob = phasespaceprob / normalization;
 
-%% Calculate the first and second moments of the distribution over time and
-%  interpolate a probability distribution over time for a mixOD
+%% Calculate the probability density function over time for a diffraction limited imaging system
 x_avg = zeros(length(tvec),1); p_avg = x_avg;  %initialize moment vectors
 xspread_avg = x_avg; pspread_avg = x_avg;
-maxx = 1.2*max(xvec,[],'all'); minx = 1.2*min(xvec,[],'all'); %set mixOD array
-xpoints = minx:1:maxx;
-P= reshape(phasespaceprob,1,sizex*sizep); %turn probability matrix into array
+maxx = 1.2*max(xvec,[],'all'); minx = 1.2*min(xvec,[],'all');
+dx = 0.5;    %mesh spacing in lattice sites
+xpoints = round(minx):dx:round(maxx);   %set position mesh
+P= reshape(phasespaceprob,1,sizex*sizep); %turn initial condition probability matrix into array
+difflimit = 5.27/.532; %diffraction limited imaging resolution
+pixsize = 2.6/.532;  %camera pixel size
+pixels = minx:pixsize:maxx;  %for accuracy with experiment by binning into camera pixels
 OD = zeros(length(xpoints),length(tvec));  %initialize OD
-for ii=1:length(tvec)
-    %organize probabilities and interpolate to created normalized OD
-    x = xvec(:,:,ii);
-    x = reshape(x,1,sizex*sizep); %turn matrix into 1D array
-    binsize = 8;  %pixel size on camera
-    xbins = min(x):binsize:max(x);
-    probs = zeros(1,length(xbins));
-    for jj=1:length(xbins)
-        probs(jj) = sum(P(abs(x-xbins(jj))<binsize/2)); %bin probabilities
+tic
+parfor ii=1:length(tvec)
+    %calculate diffraction limited probability distribution using
+    %convolution with point spread function
+    xs = xvec(:,:,ii);
+    xs = reshape(xs,1,sizex*sizep); %turn matrix into 1D array
+    xsunique = unique(xs);
+    psf = @(x,x0) exp(-(x-x0).^2/(2*(difflimit/3)^2)); %gaussian point spread function
+    probs = zeros(length(xs),length(xpoints));
+    for jj=1:length(xsunique)  %array of point spread functions for each initial condition
+        probs(jj,:) = sum(P(xs==xsunique(jj)))*psf(xpoints,xsunique(jj));
     end
-    probs = probs/sum(probs);  %normalized binned probabilities
-    if ii~=1
-        od = interp1(xbins,probs,xpoints,'makima',0); %interpolate using modified akima spline, extrapolated points set to 0
-        od = smoothdata(od,'sgolay',15); %smooth over interpolation oscillations
-        od(od<0) = 0; %get rid of negative od from smoothing
-    else
-        od = normpdf(xpoints,0,xsigma); %since values not unique just make gaussian at t=0
+    probs = sum(probs);  %convolution
+    probs = probs/sum(probs);  %normalized probabilities
+    binnedprobs = zeros(1,length(pixels));
+    for jj=1:length(pixels)   %bin probabilties into camera pixels
+        binnedprobs(jj) = sum(probs(abs(xpoints-pixels(jj))<pixsize/2));
     end
-    OD(:,ii) = od/sum(od);  %normalize
-    %plotting
-    figure(9);
-    clf;
-    plot(xpoints,od);
-    hold on;
-    plot(xbins,probs,'b.');
-    ylim([0 .1]); 
-    hold off;
-    drawnow;
-    del = .01;
-    filename = 'interpolate.gif';
-    im = frame2im(getframe(gcf));
-    [imind,cm] = rgb2ind(im,256);
-    if ii == 1
-        imwrite(imind,cm,filename,'gif','Loopcount',Inf,'DelayTime',del);
-    else
-        imwrite(imind,cm,filename,'gif','WriteMode','append','DelayTime',del);
-    end
+    OD(:,ii) = probs/dx;  %don't bin this by pixel since it becomes too grainy
 
     % compute moments
-    x_avg(ii) = xbins*probs';
-    xspread_avg(ii) = sqrt(xbins.^2 * probs' - x_avg(ii)^2);
+    x_avg(ii) = pixels*binnedprobs';
+    xspread_avg(ii) = sqrt(pixels.^2 * binnedprobs' - x_avg(ii)^2);
     weightedp = pvec(:,:,ii).*phasespaceprob;
     weightedpsquared = weightedp.*pvec(:,:,ii);
     p_avg(ii) = sum(sum(weightedp,1));
     pspread_avg(ii) = sqrt(sum(sum(weightedpsquared,1)) - p_avg(ii)^2);
 end
+toc
 
 %% Plot OD
 hF6=figure(6);
@@ -235,7 +221,7 @@ hF6.Position(1:2) = [400 100];
 hF6.Position(3:4)=[1000 500];
 ax = gca;
 surf(tvec*1E3,xpoints,OD);
-colormap(jet);
+colormap(fake_parula());
 caxis([0 .01]);
 shading flat;
 view(2);
@@ -305,15 +291,10 @@ ylim([0 1]);
 subplot(313)
 set(gca,'box','on','linewidth',1,'fontsize',14,...
     'fontname','times');
-hold on;
-if modulation == 1
-    latticedepth = Ufunc(tvec);
-    plot(tvec*1e3,latticedepth,'k-','linewidth',1);
-else
-    plot([0 max(tvec)]*1e3,[1 1]*U0,'k-','linewidth',1);
-end
 xlabel('time (ms)','interpreter','latex');
 ylabel('$V_0 (E_R)$','interpreter','latex');
+saveas(gcf,'psbo_semi_sim.fig');
+saveas(gcf,'psbo_semi_sim.png');
 
 figure(73);
 clf;
@@ -323,7 +304,5 @@ ylabel('Uncertainty ($\hbar/2$)','interpreter','latex');
 ylim([0 2]);
 xlim([0 200]);
 
-saveas(gcf,'psbo_semi_sim.fig');
-saveas(gcf,'psbo_semi_sim.png');
-save('data.mat','tvec','x_avg','xspread_avg','latticedepth','U0','U1','phi0',...
+save('semi.mat','tvec','x_avg','xspread_avg','latticedepth','U0','U1','phi0',...
     'TB0','fD','dfdt','xpoints','OD');
