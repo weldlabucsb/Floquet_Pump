@@ -101,7 +101,7 @@ L=(fR*BW(U0)/fB0);
 
 J = Er*BW(U0+U1*sin(phi0))/4;   %tunneling energy in Joules
 lws = 2*J/F0;                   %localization length in meters
-F = F0 - m*omega^2*lws;         %actual force at start of the drive
+F = F0 - m*omega^2*lws*2;         %actual force at start of the drive
 %% Time evolve with modulated lattice depth
 % Time evolves a classical ensemble of particles in a harmonic potential
 % with a custom dispersion.
@@ -317,6 +317,8 @@ else
 end
 xlabel('time (ms)','interpreter','latex');
 ylabel('$V_0 (E_R)$','interpreter','latex');
+saveas(gcf,'psbo_semi_sim.fig');
+saveas(gcf,'psbo_semi_sim.png');
 
 figure(73);
 clf;
@@ -326,7 +328,5 @@ ylabel('Uncertainty ($\hbar/2$)','interpreter','latex');
 ylim([0 2]);
 xlim([0 200]);
 
-saveas(gcf,'psbo_semi_sim.fig');
-saveas(gcf,'psbo_semi_sim.png');
 save('data.mat','tvec','x_avg','xspread_avg','latticedepth','U0','U1','phi0',...
     'TB0','fD','dfdt','xpoints','OD');
