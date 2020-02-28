@@ -99,10 +99,10 @@ text(.98,.02,['$U_0=' num2str(U0) 'E_R$'],'interpreter','latex',...
 L=(fR*BW(U0)/fB0);
 
 %% Compensate for initial half BO for experimental comparison
-
 J = Er*BW(U0+U1*sin(phi0))/4;   %tunneling energy in Joules
 lws = 2*J/F0;                   %localization length in meters
 F = F0 - m*omega^2*lws*2;         %actual force at start of the drive
+
 %% Time evolve with modulated lattice depth
 % Time evolves a classical ensemble of particles in a harmonic potential
 % with a custom dispersion.
@@ -161,7 +161,7 @@ tic
 parfor ix=1:sizex*sizep
     [ii,jj]=ind2sub([sizex sizep],ix);
     [T,Y]=ode45(@(t,V) dPdT(t,V),Tlim,[xinit(ii);pinit(jj)],opt); %numerically integrate
-    xvec{ix} = interp1(T,Y(:,1),tvec); %interpolate for identical length vectors
+    xvec{ix} = interp1(T,Y(:,1),tvec); %interpolate over mesh
     pvec{ix} = mod(interp1(T,Y(:,2),tvec)+1,2)-1;
     phasespaceprob{ix} = exp(-(xinit(ii)/xsigma)^2/2)*exp(-((pinit(jj)-p0)/psigma)^2/2); %assign probability
 end
@@ -169,7 +169,7 @@ xvec = cell2mat(cellfun(@(x)reshape(x,1,1,[]),xvec,'un',0));
 pvec = cell2mat(cellfun(@(x)reshape(x,1,1,[]),pvec,'un',0));
 phasespaceprob=cell2mat(phasespaceprob);
 toc
-normalization = sum(sum(phasespaceprob,1)); %normalize probability
+normalization = sum(phasespaceprob,'all'); %normalize probability
 phasespaceprob = phasespaceprob / normalization;
 
 %% Calculate the probability density function over time for a diffraction limited imaging system
@@ -178,10 +178,12 @@ xspread_avg = x_avg; pspread_avg = x_avg;
 maxx = 1.2*max(xvec,[],'all'); minx = 1.2*min(xvec,[],'all');
 dx = 0.5;    %mesh spacing in lattice sites
 xpoints = round(minx):dx:round(maxx);   %set position mesh
-P= reshape(phasespaceprob,1,sizex*sizep); %turn initial condition probability matrix into array
-difflimit = 5.27/.532; %diffraction limited imaging resolution
-pixsize = 2.6/.532;  %camera pixel size
-pixels = minx:pixsize:maxx;  %for accuracy with experiment by binning into camera pixels
+P= reshape(phasespaceprob,sizex*sizep,1); %turn initial condition probability matrix into array
+difflimit = 5.27/.532; %diffraction limited imaging resolution, make really small if don't care
+psf = @(dx) exp(-dx.^2/(2*(difflimit/3)^2)); %gaussian point spread function
+pixsize = 2.6/.532;  %camera pixel size, make dx if don't care
+% pixsize = dx;
+pixels = round(minx):pixsize:round(maxx);  %for accuracy with experiment by binning into camera pixels
 OD = zeros(length(xpoints),length(tvec));  %initialize OD
 tic
 parfor ii=1:length(tvec)
@@ -189,13 +191,13 @@ parfor ii=1:length(tvec)
     %convolution with point spread function
     xs = xvec(:,:,ii);
     xs = reshape(xs,1,sizex*sizep); %turn matrix into 1D array
-    xsunique = unique(xs);
-    psf = @(x,x0) exp(-(x-x0).^2/(2*(difflimit/3)^2)); %gaussian point spread function
-    probs = zeros(length(xs),length(xpoints));
-    for jj=1:length(xsunique)  %array of point spread functions for each initial condition
-        probs(jj,:) = sum(P(xs==xsunique(jj)))*psf(xpoints,xsunique(jj));
-    end
-    probs = sum(probs);  %convolution
+    Ixpoints = zeros(length(xpoints),1)+1;
+    Ixs = zeros(1,length(xs))+1;
+    Xi = xpoints'*Ixs;
+    Xj = Ixpoints*xs;
+    Delta = Xi-Xj;   % mesh-trajectory difference matrix to evaluate point spread at
+    convMat = psf(Delta);  %point spread convolution operator
+    probs = convMat*P;
     probs = probs/sum(probs);  %normalized probabilities
     binnedprobs = zeros(1,length(pixels));
     for jj=1:length(pixels)   %bin probabilties into camera pixels
@@ -291,6 +293,14 @@ ylim([0 1]);
 subplot(313)
 set(gca,'box','on','linewidth',1,'fontsize',14,...
     'fontname','times');
+hold on;
+if modulation == 1
+    latticedepth = Ufunc(tvec);
+    plot(tvec*1e3,latticedepth,'k-','linewidth',1);
+else
+    latticedepth = [1 1]*U0;
+    plot([0 max(tvec)]*1e3,latticedepth,'k-','linewidth',1);
+end
 xlabel('time (ms)','interpreter','latex');
 ylabel('$V_0 (E_R)$','interpreter','latex');
 saveas(gcf,'psbo_semi_sim.fig');
