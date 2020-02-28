@@ -24,7 +24,7 @@ kL = pi/d;
 %%%%% Specification of initial wavefunction %%%%%
 % Spatial extent of wavefunction
 % Remember that a lattice spacing in these units is pi
-s=60*pi;   %initial width in lattice site * pi
+s=5*pi;   %initial width in lattice site * pi
 
 % initial eigenstate
 k=1;           % initial quasimomentum
@@ -41,15 +41,16 @@ Er = h*fR;
 % force as expressed in bloch frequency
 % fB=29.1;        % bloch frequency in Hz
 % fB=150;           % Aproximately our fastest bloch frequency
-tB0 = 18E-3;          % bloch period in s
+tB0 = 16.75E-3;          % bloch period in s
 fB0 = 1/tB0;
 F0 = h*fB0/d;
 
 % lattice drive
 fD = 53.56;                % drive frequency in Hz
 wD = 2*pi*fD;
-theta = pi/2;         % initial drive phase in rad
-A = 1.02/depth;            % modulation amplitude
+theta = 2*pi/2;         % initial drive phase in rad
+amp = 1.02/depth;            % modulation amplitude
+dfdt = 115;           % frequency chirp, set to 0 if not chirping
 
 % Quadratic portion of magnetic potential 
 fho=15.5;         % harmonic oscillator frequency in Hz
@@ -60,6 +61,7 @@ who = 2*pi*fho;
 % Convert the experimental values into fundamental units of Er
 Q=(mLi*who^2*d^2)/(2*Er);         % curvature frequency scaled in Er
 W = wD/wR;      % drive frequency in Er
+dW = 2*pi*dfdt/wR^2;   %rate of change of drive frequency
 
 % Display the simulation parameters
 disp(' ');
@@ -76,12 +78,12 @@ disp(['initial quasimomentum     : ' num2str(k)  ' recoils']);
 % Calcuate and display relevant theoretical values
 
 % Spectrum at zone center
-H1=makeHmatrix(0,depth*(1+A*sin(theta)));                      
+H1=makeHmatrix(0,depth*(1+amp*sin(theta)));                      
 [~,eCen]=eig(full(H1));       
 eCen=diag(eCen);
 
 % spectrum at zone edge
-H2=makeHmatrix(1,depth*(1+A*sin(theta)));                         
+H2=makeHmatrix(1,depth*(1+amp*sin(theta)));                         
 [~,eEdge]=eig(full(H2));                             
 eEdge=diag(eEdge);
 
@@ -90,11 +92,11 @@ BW=abs(eEdge-eCen);
 % Compensate for initial half BO
 J = Er*BW(1)/4;   %tunneling energy in Joules
 lws = 2*J/F0;                   %localization length in meters
-F = F0 - mLi*who^2*lws;         %actual force at start of the drive
+F = F0 - mLi*who^2*lws*2;         %actual force at start of the drive
 fB = F*d/h;
 F = fB/fR;
 % lattice potential
-v_mod=@(phi,t) -cos(2*phi)*(depth/2)*(1+A*sin(W*t+theta))-...       
+v_mod=@(phi,t) -cos(2*phi)*(depth/2)*(1+amp*sin((W+dW*t)*t+theta))-...       
     phi/pi*F+Q/pi^2 *phi.^2;
 
 %% Simulation Parameters
@@ -102,7 +104,7 @@ v_mod=@(phi,t) -cos(2*phi)*(depth/2)*(1+A*sin(W*t+theta))-...
 % Utype='RK4';
 
 % Define position mesh
-nSites=[-400 600];              % lattice site vector
+nSites=[-450 100];              % lattice site vector
 nPerSite=5;                    % points per site (sets max momentum)
 X=(linspace(nSites(1),nSites(2),...
     nPerSite*range(nSites))*pi)';
@@ -110,7 +112,7 @@ dX=X(2)-X(1);                   % Separation between positions
 
 % Define time vectors. Time is in phase angle of hbar*omega_R.
 % T=abs(2*pi/F);                  % Bloch period
-tau=120E-3*wR;             
+tau=100E-3*wR;             
 
 dtau=.4*dX^2;                   % 0.4 for RK4 stability (basically need 
 %that dT/dX^2 be small for the kinetic energy matrix to have reasonable
@@ -182,7 +184,7 @@ set(gca,'xgrid', 'off', 'ygrid', 'off',...
     'box','on','YTickLabel',{},'FontSize',12,'xdir','normal');
 xlim([min(X/pi) max(X/pi)]);
 xlabel('position (sites)','interpreter','latex');
-ylim([0 1.1*max(real(conj(Y).*Y))]);
+ylim([0 1.5*max(real(conj(Y).*Y))]);
 ylabel('$|\Psi(\phi)|^2$','interpreter','latex');
 xlim(nSites);
 
@@ -215,7 +217,23 @@ nStp=0;
 inc=.001;
 tt=[];
 
-YMat=Y;
+YMat=Y;  %columns are raw probability densities across X mesh over time
+
+%accounting for imaging effects
+I = zeros(1,length(X))+1;    %row identity vector
+Xi = X*I;
+Xj = Xi';
+Delta = Xi-Xj;  %position difference matrix
+difflimit = pi*5.27/.532;   %diffraction limit, set to very <<1 if don't care
+psf = @(dx) exp(-dx.^2/(2*(difflimit/3)^2));  %point spread function
+convMat = psf(Delta);   %convolution operator
+pixelsize = pi*2.6/.532;    %pixel size for binning, set to dX if don't care
+pixelsize = dX;
+numPix = round(range(X)/pixelsize);
+[~,pixMesh,bins] = histcounts(X,numPix);  %pixel mesh and indices for binning probabilities into pixels
+pixMesh = pixMesh(1:length(pixMesh)-1)+pixelsize/2;
+YConv = zeros(length(pixMesh),1);
+
 disp(length(tVec))
 tic
 for kk=1:length(tVec)
@@ -229,10 +247,12 @@ for kk=1:length(tVec)
 
     % make propagator
     U=makeRK4(Hmat,dtau,X);  %4th order Runge-Kutta method
-%     U=makeCK(Hmat,dtau,X);   %2nd order midpoint Crank Nicholson method
+%     U=makeCK(Hmat,dtau,X);   %2nd order midpoint Crank Nicholson method,
+%     not working
     
     Y=U*Y;          % apply the TDSE
-
+    Y = Y / sqrt(sum(conj(Y).*Y));   %renormalize
+    
     % Check to update the plot
     if kk/length(tVec)>=nStp*inc
         nStp=nStp+1;
@@ -240,13 +260,22 @@ for kk=1:length(tVec)
         
         % calculate observables
         [~,Pk]=computeFFT(X,Y);        
-        Px=real(conj(Y).*Y);
+        Px=conj(Y).*Y;
+        PxConv = convMat*Px;
+        PxConv = PxConv/sum(PxConv);
+        PxBinned = accumarray(bins,PxConv);
         YMat(1:length(Y),nStp)=Px;
+        YConv(1:length(PxBinned),nStp)=PxBinned;
         
         % update each plot
         pPsiR.YData=real(Y);
-        pPsiC.YData=imag(Y);            
-        pPsiD.YData=Px;
+        pPsiC.YData=imag(Y);
+        if nStp==1
+            pPsiD.XData=pixMesh/pi;
+            subplot(222);
+            ylim([0 1.5*max(PxBinned)]);
+        end
+        pPsiD.YData=PxBinned;
         pK.YData=Pk;     
         
         drawnow;
@@ -269,7 +298,9 @@ toc
 %% Compute moments
 t = tt'/wR;   %time vector in s
 mean=X'/pi*YMat;   %average position in lattice sites
+meanConv = pixMesh/pi*YConv;
 spread = sqrt((X'/pi).^2 * YMat - mean.^2);
+spreadConv= sqrt((pixMesh/pi).^2*YConv-meanConv.^2);
 %% Plotting of the Mean Position
 hF3=figure(12);
 clf
@@ -292,6 +323,8 @@ caxis([0 5E-4]);
 subplot(132)
 cla
 plot(t*1E3,mean,'color','k','linewidth',2);
+hold on;
+plot(t*1E3,meanConv,'b--','linewidth',2);
 set(gca,'fontname','times','fontsize',12,'box','on',...
     'linewidth',1);
 
@@ -306,10 +339,12 @@ caxis([0 5E-4]);
 
 subplot(133);
 plot(t*1E3,spread,'color','k','linewidth',2);
+hold on;
+plot(t*1E3,spreadConv,'b-','linewidth',2);
 set(gca,'fontname','times','fontsize',12,'box','on','linewidth',1);
 ylabel('Spread ($d$)','interpreter','latex');
 xlabel('Time (ms)','interpreter','latex');
 saveas(gcf,'moments.fig');
 saveas(gcf,'moments.png');
-save('data.mat','t','mean','spread','depth','A','theta',...
-    'tB0','fD');
+save('data.mat','t','mean','meanConv','spread','spreadConv','YMat','YConv',...
+        'depth','amp','theta','tB0','fD');
