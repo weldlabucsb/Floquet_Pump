@@ -228,11 +228,12 @@ difflimit = pi*5.27/.532;   %diffraction limit, set to very <<1 if don't care
 psf = @(dx) exp(-dx.^2/(2*(difflimit/3)^2));  %point spread function
 convMat = psf(Delta);   %convolution operator
 pixelsize = pi*2.6/.532;    %pixel size for binning, set to dX if don't care
-pixelsize = dX;
+%pixelsize = dX;
 numPix = round(range(X)/pixelsize);
 [~,pixMesh,bins] = histcounts(X,numPix);  %pixel mesh and indices for binning probabilities into pixels
 pixMesh = pixMesh(1:length(pixMesh)-1)+pixelsize/2;
-YConv = zeros(length(pixMesh),1);
+YConv = zeros(length(X),1);
+YBinned = zeros(length(pixMesh),1);
 
 disp(length(tVec))
 tic
@@ -265,7 +266,8 @@ for kk=1:length(tVec)
         PxConv = PxConv/sum(PxConv);
         PxBinned = accumarray(bins,PxConv);
         YMat(1:length(Y),nStp)=Px;
-        YConv(1:length(PxBinned),nStp)=PxBinned;
+        YConv(1:length(PxConv),nStp)=PxConv;
+        YBinned(1:length(PxBinned),nStp)=PxBinned;
         
         % update each plot
         pPsiR.YData=real(Y);
@@ -346,5 +348,5 @@ ylabel('Spread ($d$)','interpreter','latex');
 xlabel('Time (ms)','interpreter','latex');
 saveas(gcf,'moments.fig');
 saveas(gcf,'moments.png');
-save('data.mat','t','mean','meanConv','spread','spreadConv','YMat','YConv',...
+save('data.mat','t','X','pixMesh','mean','meanConv','spread','spreadConv','YMat','YConv','YBinned',...
         'depth','amp','theta','tB0','fD');
