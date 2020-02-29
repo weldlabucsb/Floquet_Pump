@@ -204,6 +204,7 @@ parfor ii=1:length(tvec)
         binnedprobs(jj) = sum(probs(abs(xpoints-pixels(jj))<pixsize/2));
     end
     OD(:,ii) = probs/dx;  %don't bin this by pixel since it becomes too grainy
+    OD(:,ii) = OD(:,ii)/sum(OD(:,ii)); %normalize
 
     % compute moments
     x_avg(ii) = pixels*binnedprobs';
