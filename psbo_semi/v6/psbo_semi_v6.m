@@ -203,8 +203,7 @@ parfor ii=1:length(tvec)
     for jj=1:length(pixels)   %bin probabilties into camera pixels
         binnedprobs(jj) = sum(probs(abs(xpoints-pixels(jj))<pixsize/2));
     end
-    OD(:,ii) = probs/dx;  %don't bin this by pixel since it becomes too grainy
-    OD(:,ii) = OD(:,ii)/sum(OD(:,ii)); %normalize
+    OD(:,ii) = probs/dx;  %don't bin this by pixel since it becomes too grain, division gives probability density
 
     % compute moments
     x_avg(ii) = pixels*binnedprobs';
